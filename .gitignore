@@ -1,0 +1,5 @@
+/.venv
+*.onnx
+*.bin
+*.wav
+*.txt
