@@ -2,6 +2,7 @@ import re
 import subprocess
 import sys
 import time
+from pathlib import Path
 import numpy as np
 import soundfile as sf
 from kokoro_onnx import Kokoro
@@ -19,6 +20,7 @@ g2p = en.G2P(
     british=BRITISH,
     fallback=espeak.EspeakFallback(british=BRITISH)
 )
+kokoro = Kokoro("kokoro-v1.0.onnx", "voices-v1.0.bin")
 
 def phonemize(text):
     return g2p(text)[0]
@@ -43,68 +45,92 @@ def pack(sentences):
     if current:
         yield current
 
-chapter_text = open("input_chapters_text/01.txt", encoding="utf-8").read().strip()
+def build_tasks(text):
+    tasks = []
+    total_chunks = 0
+    for segment in re.split(r"(\n+)", text):
+        if not segment:
+            continue
+        if segment[0] == "\n":
+            tasks.append(("pause", len(segment) * NEWLINE_PAUSE))
+            continue
+        sentence_packs = list(pack(sentences(segment)))
+        total_chunks += len(sentence_packs)
+        for i, sentence_pack in enumerate(sentence_packs):
+            tasks.append(("speak", sentence_pack))
+            if i < len(sentence_packs) - 1:
+                tasks.append(("pause", SENTENCE_PAUSE))
+    return tasks, total_chunks
 
-tasks = []
-total_chunks = 0
-for segment in re.split(r"(\n+)", chapter_text):
-    if not segment:
-        continue
-    if segment[0] == "\n":
-        tasks.append(("pause", len(segment) * NEWLINE_PAUSE))
-        continue
-    sentence_packs = list(pack(sentences(segment)))
-    total_chunks += len(sentence_packs)
-    for i, sentence_pack in enumerate(sentence_packs):
-        tasks.append(("speak", sentence_pack))
-        if i < len(sentence_packs) - 1:
-            tasks.append(("pause", SENTENCE_PAUSE))
-
-if DEBUG:
-    print("--- Audio Commands ---")
+def synthesize(tasks, total_chunks):
+    chunks = []
+    chunks_generated = 0
     for task in tasks:
-        print(f"pause: {task[1]:g}s" if task[0] == "pause" else f"speak: {task[1]}")
-    print("----------------------")
-
-print("Generating audio...")
-start = time.perf_counter()
-kokoro = Kokoro("kokoro-v1.0.onnx", "voices-v1.0.bin")
-chunks = []
-chunks_generated = 0
-for task in tasks:
-    if task[0] == "speak":
-        samples, _ = kokoro.create(
-            phonemize(task[1]),
-            is_phonemes=True,
-            voice=VOICE,
-            speed=0.9,
-        )
-        chunks.append(samples)
-        chunks_generated += 1
-        print(f"Generated chunk {chunks_generated}/{total_chunks}")
-    else:
-        chunks.append(
-            np.zeros(
-                int(task[1] * SAMPLE_RATE),
-                dtype=np.float32,
+        if task[0] == "speak":
+            samples, _ = kokoro.create(
+                phonemize(task[1]),
+                is_phonemes=True,
+                voice=VOICE,
+                speed=0.9,
             )
-        )
-raw_output_path = "output_raw.wav"
-sf.write(raw_output_path, np.concatenate(chunks), SAMPLE_RATE)
-print(f"Generated in {time.perf_counter() - start:.3f}s.")
+            chunks.append(samples)
+            chunks_generated += 1
+            print(f"Generated chunk {chunks_generated}/{total_chunks}")
+        else:
+            chunks.append(
+                np.zeros(
+                    int(task[1] * SAMPLE_RATE),
+                    dtype=np.float32,
+                )
+            )
+    return np.concatenate(chunks)
 
-print("Post-processing...")
-start = time.perf_counter()
-result = subprocess.run([
-    "ffmpeg", "-i", raw_output_path,
-    "-af", "loudnorm=I=-19:TP=-3:LRA=11",
-    "-ar", str(SAMPLE_RATE),
-    "-y",
-    "output.wav"
-], capture_output=True, text=True)
-if result.returncode != 0:
-    print(f"FFmpeg failed:\n{result.stderr}", file=sys.stderr)
-    sys.exit(1)
-print(f"Post-processed in {time.perf_counter() - start:.3f}s.")
+def process_file(input_file, output_file):
+    main_start = time.perf_counter()
+    text = input_file.read_text(encoding="utf-8").strip()
 
-print("Finished.")
+    tasks, total_chunks = build_tasks(text)
+
+    if DEBUG:
+        print("--- Audio Commands ---")
+        for task in tasks:
+            print(f"pause: {task[1]:g}s" if task[0] == "pause" else f"speak: {task[1]}")
+        print("----------------------")
+
+    print("Generating audio...")
+    start = time.perf_counter()
+    audio = synthesize(tasks, total_chunks)
+
+    raw_output_path = output_file.with_suffix(".raw.wav")
+    sf.write(str(raw_output_path), audio, SAMPLE_RATE)
+    print(f"Generated in {time.perf_counter() - start:.3f}s")
+
+    print("Post-processing...")
+    start = time.perf_counter()
+    result = subprocess.run([
+        "ffmpeg", "-i", str(raw_output_path),
+        "-af", "loudnorm=I=-19:TP=-3:LRA=11",
+        "-ar", str(SAMPLE_RATE),
+        "-y",
+        str(output_file)
+    ], capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"FFmpeg failed:\n{result.stderr}", file=sys.stderr)
+        sys.exit(1)
+    raw_output_path.unlink(missing_ok=True)
+    print(f"Post-processed in {time.perf_counter() - start:.3f}s")
+    print(f"{output_file.name} created in {time.perf_counter() - main_start:.3f}s")
+
+script_dir = Path(__file__).resolve().parent
+input_dir = Path(f"{script_dir}/input")
+output_dir = input_dir.parent / "output"
+
+input_files = sorted(input_dir.glob("*.txt"))
+print(f"Processing {len(input_files)} files.")
+global_start = time.perf_counter()
+for input_file in input_files:
+    output_file = output_dir / (input_file.stem + ".wav")
+    print(f"\nProcessing {input_file.name}")
+    process_file(input_file, output_file)
+
+print(f"\nAll files processed in {time.perf_counter() - global_start:.3f}s")
