@@ -1,3 +1,4 @@
+import configparser
 import re
 import subprocess
 import sys
@@ -8,11 +9,18 @@ import soundfile as sf
 from kokoro_onnx import Kokoro
 from misaki import en, espeak
 
-DEBUG = True
-VOICE = "bm_lewis"
-BRITISH = True
-NEWLINE_PAUSE = .5
-SENTENCE_PAUSE = .7
+script_dir = Path(__file__).resolve().parent
+config = configparser.ConfigParser()
+config.read(script_dir / "settings.ini")
+
+DEBUG = config.getboolean("settings", "DEBUG")
+VOICE = config.get("settings", "VOICE")
+BRITISH = config.getboolean("settings", "BRITISH")
+NEWLINE_PAUSE = config.getfloat("settings", "NEWLINE_PAUSE")
+SENTENCE_PAUSE = config.getfloat("settings", "SENTENCE_PAUSE")
+ARTIST = config.get("settings", "ARTIST")
+BOOK_TITLE = config.get("settings", "BOOK_TITLE")
+
 PHONEME_LIMIT = 480
 SAMPLE_RATE = 24000
 
@@ -85,7 +93,7 @@ def synthesize(tasks, total_chunks):
             )
     return np.concatenate(chunks)
 
-def process_file(input_file, output_file):
+def process_file(input_file, output_file, track_number):
     main_start = time.perf_counter()
     text = input_file.read_text(encoding="utf-8").strip()
 
@@ -103,12 +111,17 @@ def process_file(input_file, output_file):
 
     raw_output_path = output_file.with_suffix(".raw.wav")
     sf.write(str(raw_output_path), audio, SAMPLE_RATE)
-    print(f"Generated in {time.perf_counter() - start:.3f}s")
+    print(f"Generated in {format_time(time.perf_counter() - start)}")
 
     print("Post-processing...")
     start = time.perf_counter()
     result = subprocess.run([
-        "ffmpeg", "-i", str(raw_output_path),
+        "ffmpeg",
+        "-i", str(raw_output_path),
+        "-metadata", f"artist={ARTIST}",
+        "-metadata", f"album={BOOK_TITLE}",
+        "-metadata", f"title=Chapter {track_number}",
+        "-metadata", f"track={track_number}",
         "-af", "loudnorm=I=-19:TP=-3:LRA=11",
         "-ar", str(SAMPLE_RATE),
         "-y",
@@ -118,19 +131,28 @@ def process_file(input_file, output_file):
         print(f"FFmpeg failed:\n{result.stderr}", file=sys.stderr)
         sys.exit(1)
     raw_output_path.unlink(missing_ok=True)
-    print(f"Post-processed in {time.perf_counter() - start:.3f}s")
-    print(f"{output_file.name} created in {time.perf_counter() - main_start:.3f}s")
+    print(f"Post-processed in {format_time(time.perf_counter() - start)}")
+    print(f"{output_file.name} created in {format_time(time.perf_counter() - main_start)}")
 
-script_dir = Path(__file__).resolve().parent
-input_dir = Path(f"{script_dir}/input")
-output_dir = input_dir.parent / "output"
+def format_time(seconds):
+    if seconds < 60:
+        return f"{seconds:.3f}s"
+    if seconds < 3600:
+        m, s = divmod(int(seconds), 60)
+        return f"{m}m {s}s"
+    h, rem = divmod(int(seconds), 3600)
+    m, s = divmod(rem, 60)
+    return f"{h}h {m}m {s}s"
+
+input_dir = script_dir / "input"
+output_dir = script_dir / "output"
 
 input_files = sorted(input_dir.glob("*.txt"))
 print(f"Processing {len(input_files)} files.")
 global_start = time.perf_counter()
-for input_file in input_files:
+for i, input_file in enumerate(input_files):
     output_file = output_dir / (input_file.stem + ".wav")
     print(f"\nProcessing {input_file.name}")
-    process_file(input_file, output_file)
+    process_file(input_file, output_file, i + 1)
 
-print(f"\nAll files processed in {time.perf_counter() - global_start:.3f}s")
+print(f"\nAll files processed in {format_time(time.perf_counter() - global_start)}")
