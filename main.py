@@ -118,6 +118,8 @@ def process_file(input_file, output_file, track_number):
     result = subprocess.run([
         "ffmpeg",
         "-i", str(raw_output_path),
+        "-id3v2_version", "3",
+        "-write_id3v1", "1",
         "-metadata", f"artist={ARTIST}",
         "-metadata", f"album={BOOK_TITLE}",
         "-metadata", f"title=Chapter {track_number}",
