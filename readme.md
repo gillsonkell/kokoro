@@ -9,3 +9,6 @@
 ## Both
  - [kokoro-v1.0.onnx](https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx)
  - [voices-v1.0.bin](https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin)
+
+## Helpful Commands
+pdftotext -nopgbrk book1.pdf book1.txt 

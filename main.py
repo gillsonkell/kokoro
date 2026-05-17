@@ -124,6 +124,8 @@ def process_file(input_file, output_file, track_number):
         "-metadata", f"track={track_number}",
         "-af", "loudnorm=I=-19:TP=-3:LRA=11",
         "-ar", str(SAMPLE_RATE),
+        "-c:a", "libmp3lame",
+        "-q:a", "0",
         "-y",
         str(output_file)
     ], capture_output=True, text=True)
@@ -151,7 +153,7 @@ input_files = sorted(input_dir.glob("*.txt"))
 print(f"Processing {len(input_files)} files.")
 global_start = time.perf_counter()
 for i, input_file in enumerate(input_files):
-    output_file = output_dir / (input_file.stem + ".wav")
+    output_file = output_dir / (input_file.stem + ".mp3")
     print(f"\nProcessing {input_file.name}")
     process_file(input_file, output_file, i + 1)
 
