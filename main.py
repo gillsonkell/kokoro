@@ -75,13 +75,15 @@ def synthesize(tasks, total_chunks):
     chunks_generated = 0
     for task in tasks:
         if task[0] == "speak":
-            samples, _ = kokoro.create(
-                phonemize(task[1]),
-                is_phonemes=True,
-                voice=VOICE,
-                speed=0.9,
-            )
-            chunks.append(samples)
+            phonemes = phonemize(task[1])
+            if phonemes:
+                samples, _ = kokoro.create(
+                    phonemize(task[1]),
+                    is_phonemes=True,
+                    voice=VOICE,
+                    speed=0.9,
+                )
+                chunks.append(samples)
             chunks_generated += 1
             print(f"Generated chunk {chunks_generated}/{total_chunks}")
         else:
