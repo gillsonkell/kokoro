@@ -13,6 +13,7 @@ config.read(script_dir / "settings.ini")
 OPENROUTER_API_KEY = config.get("settings", "OPENROUTER_API_KEY")
 OPENROUTER_MODEL = config.get("settings", "OPENROUTER_MODEL")
 
+DEBUG = config.getboolean("settings", "DEBUG")
 PROCESS_INPUT_DIR = script_dir / "preprocess_input"
 PROCESS_OUTPUT_DIR = script_dir / "preprocess_output"
 PROCESS_INSTRUCTIONS_FILE = script_dir / "preprocess_instructions.txt"
@@ -52,7 +53,7 @@ Do not add quotes, explanations, or any formatting. Just return the corrected te
 Rules:
 {instructions}"""
 
-    with httpx.Client(timeout=60) as client:
+    with httpx.Client(timeout=300) as client:
         response = client.post(
             "https://openrouter.ai/api/v1/chat/completions",
             headers={
@@ -68,7 +69,13 @@ Rules:
             },
         )
         response.raise_for_status()
-        return response.json()["choices"][0]["message"]["content"]
+        response_text = response.json()["choices"][0]["message"]["content"]
+
+        if DEBUG:
+            print(f"\nSent: {chunk}")
+            print(f"Received: {response_text}\n")
+
+        return response_text
 
 
 def process_file(input_path, instructions):
