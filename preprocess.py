@@ -69,13 +69,18 @@ Rules:
             },
         )
         response.raise_for_status()
-        response_text = response.json()["choices"][0]["message"]["content"]
+        data = response.json()
+        response_text = data["choices"][0]["message"]["content"]
+
+        # OpenRouter reports the actual USD cost of the request in usage.cost.
+        # It may be absent (e.g. free models) so default to 0.0.
+        cost = (data.get("usage") or {}).get("cost") or 0.0
 
         if DEBUG:
             print(f"\nSent: {chunk}")
             print(f"Received: {response_text}\n")
 
-        return response_text
+        return response_text, cost
 
 
 def process_file(input_path, instructions):
@@ -98,7 +103,7 @@ def process_file(input_path, instructions):
 
     total = sum(1 for _, send in segments if send)
 
-    results, n = [], 0
+    results, n, file_cost = [], 0, 0.0
     for seg, send in segments:
         if not send:
             results.append(seg)
@@ -108,13 +113,14 @@ def process_file(input_path, instructions):
 
         n += 1
         start = time.perf_counter()
-        processed = preprocess_chunk(core, instructions)
+        processed, cost = preprocess_chunk(core, instructions)
+        file_cost += cost
         # This segment had no newlines; drop any the model added.
         processed = re.sub(r"\s*\n+\s*", " ", processed).strip()
-        print(f"Generated chunk {n}/{total} in {format_time(time.perf_counter() - start)} ({len(core)} chars sent, {len(processed)} received)")
+        print(f"Generated chunk {n}/{total} in {format_time(time.perf_counter() - start)} ({len(core)} chars sent, {len(processed)} received, {format_cost(cost)})")
         results.append(f"{lead}{processed}{trail}")
 
-    return "".join(results)
+    return "".join(results), file_cost
 
 
 def format_time(seconds):
@@ -126,6 +132,10 @@ def format_time(seconds):
     h, rem = divmod(int(seconds), 3600)
     m, s = divmod(rem, 60)
     return f"{h}h {m}m {s}s"
+
+
+def format_cost(dollars):
+    return f"${dollars:.6f}"
 
 
 instructions = load_instructions()
@@ -140,12 +150,14 @@ PROCESS_OUTPUT_DIR.mkdir(exist_ok=True)
 print(f"Processing {len(input_files)} files.")
 global_start = time.perf_counter()
 
+total_cost = 0.0
 for input_file in input_files:
     print(f"\nProcessing {input_file.name}")
     start = time.perf_counter()
     output_file = PROCESS_OUTPUT_DIR / input_file.name
-    result = process_file(input_file, instructions)
+    result, file_cost = process_file(input_file, instructions)
+    total_cost += file_cost
     output_file.write_text(result, encoding="utf-8")
-    print(f"{output_file.name} created in {format_time(time.perf_counter() - start)}")
+    print(f"{output_file.name} created in {format_time(time.perf_counter() - start)} (cost: {format_cost(file_cost)})")
 
-print(f"\nAll files processed in {format_time(time.perf_counter() - global_start)}")
+print(f"\nAll files processed in {format_time(time.perf_counter() - global_start)} (total cost: {format_cost(total_cost)})")
