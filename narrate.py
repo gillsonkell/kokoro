@@ -14,6 +14,7 @@ config = configparser.ConfigParser()
 config.read(script_dir / "settings.ini")
 
 DEBUG = config.getboolean("settings", "DEBUG")
+SHOW_PHONEMES = config.getboolean("settings", "SHOW_PHONEMES")
 VOICE = config.get("settings", "VOICE")
 BRITISH = config.getboolean("settings", "BRITISH")
 NEWLINE_PAUSE = config.getfloat("settings", "NEWLINE_PAUSE")
@@ -77,8 +78,12 @@ def synthesize(tasks, total_chunks):
         if task[0] == "speak":
             phonemes = phonemize(task[1])
             if phonemes:
+                if SHOW_PHONEMES:
+                    print(f"\nText: {task[1]}")
+                    print(f"Phonemes: {phonemes}\n")
+
                 samples, _ = kokoro.create(
-                    phonemize(task[1]),
+                    phonemes,
                     is_phonemes=True,
                     voice=VOICE,
                     speed=0.9,
@@ -150,8 +155,8 @@ def format_time(seconds):
     m, s = divmod(rem, 60)
     return f"{h}h {m}m {s}s"
 
-input_dir = script_dir / "input"
-output_dir = script_dir / "output"
+input_dir = script_dir / "narrate_input"
+output_dir = script_dir / "narrate_output"
 
 input_files = sorted(input_dir.glob("*.txt"))
 print(f"Processing {len(input_files)} files.")

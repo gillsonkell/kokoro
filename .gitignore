@@ -3,8 +3,14 @@
 kokoro-v1.0.onnx
 voices-v1.0.bin
 
-/input/*
-!/input/.gitkeep
+/narrate_input/*
+!/narrate_input/.gitkeep
 
-/output/*
-!/output/.gitkeep
+/narrate_output/*
+!/narrate_output/.gitkeep
+
+/preprocess_input/*
+!/preprocess_input/.gitkeep
+
+/preprocess_output/*
+!/preprocess_output/.gitkeep

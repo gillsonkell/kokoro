@@ -1,0 +1,3 @@
+Convert any hick speech into something the text-to-speech tool will be able to pronounce. It struggles with things like "y'" for "ya", and "'ave" for "have". And certain instances of leading or trailing apostrophes, like "plannin'" for "planning", works better if it's just "plannin" (no apostrophe). Try to make the end result still sound as hick as you can while still allowing the tool to pronounce the words.
+
+Phonemes for the name Lita: lˈitə
